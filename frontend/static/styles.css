@@ -598,11 +598,90 @@ header {
 .sc-comeback { border-color: #3b82f6 !important; box-shadow: 0 0 8px rgba(59,130,246,0.25); }
 .sc-comeback-tag { font-size: 0.68rem; color: #60a5fa; }
 
-/* ── Responsive ─────────────────────────────────────────────────────────── */
+/* ─── Personality card ─── */
+.personality-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 22px;
+}
+.personality-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+.personality-emoji { font-size: 2.6rem; flex-shrink: 0; }
+.personality-text-wrap { display: flex; flex-direction: column; gap: 4px; }
+.personality-title { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+.personality-desc { font-size: 0.85rem; color: var(--text-dim); font-style: italic; }
+
+/* ── Responsive — tablet ─────────────────────────────────────────────── */
 @media (max-width: 680px) {
   .main-grid { grid-template-columns: 1fr; }
   .camera-panel { border-right: none; border-bottom: 1px solid var(--border); min-height: 220px; max-height: 280px; }
   .graph-strip { height: 80px; }
   .diff-row { flex-wrap: wrap; }
   .diff-btn { min-width: calc(50% - 4px); }
+}
+
+/* ── Responsive — mobile portrait ───────────────────────────────────── */
+@media (max-width: 480px) {
+  body { overflow-y: auto; }
+  .screen { height: auto; min-height: 100dvh; overflow-y: auto; }
+
+  /* Header */
+  header { padding: 6px 10px; min-height: 46px; }
+  .vol-label { display: none; }
+  .vol-slider { width: 44px; }
+  .logo span:not(.logo-icon):not(.badge) { display: none; }
+  .badge { font-size: 0.55rem; }
+
+  /* Camera + meme stacked */
+  .main-grid { grid-template-columns: 1fr; }
+  .camera-panel {
+    border-right: none; border-bottom: 1px solid var(--border);
+    height: 200px; min-height: 200px; max-height: 200px;
+  }
+  .meme-panel { padding: 8px 10px; gap: 6px; }
+  #meme-card { max-width: 100%; }
+
+  /* Expression bar */
+  #expression-bar { padding: 5px 10px; gap: 8px; }
+  .intensity-bar-wrap { max-width: 100px; }
+
+  /* Graph */
+  .graph-strip { height: 66px; }
+  .graph-body { height: 48px; }
+
+  /* Context bar */
+  .context-bar { flex-wrap: wrap; padding: 5px 10px; gap: 5px; }
+  #context-input { max-width: 100%; }
+  .btn-group { margin-left: 0; width: 100%; justify-content: flex-end; }
+
+  /* Scorecard */
+  .scorecard { padding: 4px 10px; }
+  .sc-player { padding: 4px 8px; }
+
+  /* Challenge overlay */
+  .challenge-overlay { width: 88%; min-width: unset; top: 50px; }
+
+  /* Bonus feed */
+  .bonus-feed { right: 8px; top: 54px; }
+  .time-mult-badge { left: 8px; top: 50px; font-size: 0.72rem; }
+
+  /* Report screen */
+  .report-wrap { padding: 20px 14px 36px; gap: 20px; }
+  .report-scorecards { flex-direction: column; }
+  .report-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .report-actions .btn { justify-content: center; }
+  .personality-inner { gap: 10px; }
+  .personality-emoji { font-size: 2rem; }
+
+  /* Lobby */
+  .lobby-wrap { padding: 16px 12px; gap: 20px; }
+  .lobby-card { padding: 18px 14px; }
+  .mode-grid { gap: 8px; }
+  .diff-row { gap: 6px; }
+  .dur-row { gap: 6px; }
 }

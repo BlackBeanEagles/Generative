@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gifshot@0.4.5/build/gifshot.min.js"></script>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -264,8 +265,23 @@
       </div>
     </div>
 
+    <!-- Personality archetype card -->
+    <div id="personality-card" class="personality-card" style="display:none">
+      <p class="section-label">Your Expression Archetype</p>
+      <div class="personality-inner">
+        <span id="personality-emoji" class="personality-emoji">🎭</span>
+        <div class="personality-text-wrap">
+          <p id="personality-title" class="personality-title">Analyzing…</p>
+          <p id="personality-desc" class="personality-desc"></p>
+        </div>
+      </div>
+    </div>
+
     <div class="report-actions">
       <button id="download-report-btn" class="btn btn-primary btn-lg">📥 Download Report</button>
+      <button id="export-gif-btn" class="btn btn-secondary btn-lg">🎞 Export GIF</button>
+      <button id="battle-card-btn" class="btn btn-secondary btn-lg">🃏 Battle Card</button>
+      <button id="rematch-btn" class="btn btn-secondary btn-lg" style="display:none">⚔️ Rematch</button>
       <button id="share-report-btn" class="btn btn-secondary btn-lg">🔗 Share</button>
       <button id="play-again-btn" class="btn btn-secondary btn-lg">🔄 Play Again</button>
     </div>

@@ -204,6 +204,35 @@ async def get_room(code: str):
     }
 
 
+class PersonalityRequest(BaseModel):
+    expression_counts: dict
+    top_expression: str = "neutral"
+    max_streak: int = 0
+    total_expressions: int = 0
+
+
+@app.post("/api/personality")
+async def personality_profile(req: PersonalityRequest):
+    top3 = sorted(req.expression_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    top3_str = ", ".join(f"{e} ({c}x)" for e, c in top3) if top3 else "neutral"
+    try:
+        message = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            messages=[{"role": "user", "content": (
+                f"Expression breakdown: {top3_str}. "
+                f"Max streak: {req.max_streak}x. Total: {req.total_expressions} expressions.\n"
+                "Create a fun emotional archetype. Write a bold title on line 1 "
+                "(e.g. 'The Chaotic Reactor') and a punchy sentence on line 2. "
+                "Under 30 words total. No JSON, no quotes."
+            )}],
+        )
+        profile = message.content[0].text.strip()
+    except Exception:
+        profile = "The Mysterious One\nYour expressions defy all known classification."
+    return {"profile": profile}
+
+
 # ─── Game timer (challenges + ticks + end) ───────────────────────────────────
 
 async def game_loop(room, gm: GameManager):
@@ -341,6 +370,18 @@ async def game_ws(ws: WebSocket, code: str, player_name: str):
                     timer_task.cancel()
                 await game_manager.broadcast_all(room, {
                     "type": "game_ended", "report": room.build_report(),
+                })
+
+            elif mtype == "rematch" and name == room.host:
+                if timer_task and not timer_task.done():
+                    timer_task.cancel()
+                timer_task = None
+                room.reset()
+                await game_manager.broadcast_all(room, {
+                    "type": "rematch",
+                    "players": list(room.players.keys()),
+                    "duration": room.duration,
+                    "difficulty": room.difficulty,
                 })
 
     except WebSocketDisconnect:

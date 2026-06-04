@@ -132,6 +132,22 @@ class GameRoom:
             }
         return report
 
+    def reset(self):
+        """Reset for rematch — keep players connected, clear all game state."""
+        for p in self.players.values():
+            p.score = 0
+            p.streak = 0
+            p.last_expression = None
+            p.unique_expressions = set()
+            p.consecutive_neutral = 0
+            p.current_meme_url = ""
+            p.events = []
+        self.votes = {}
+        self.current_challenge = None
+        self.challenge_deadline = 0.0
+        self.started_at = None
+        self.ended = False
+
 
 # ─── Scoring engine ───────────────────────────────────────────────────────────
 

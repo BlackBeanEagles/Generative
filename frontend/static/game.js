@@ -84,6 +84,8 @@
       this.onBonuses       = null;    // Mod 2,1,3
       this.onTimeMultiplier = null;   // Mod 7
       this.onComeback      = null;    // Mod 10
+      this.onRematch       = null;
+      this.onCrowdVote     = null;
     }
 
     /* ── Client-side solo scoring (mirrors backend calc_score_full) ─────── */
@@ -250,6 +252,20 @@
           else if (rem <= 15) { mult = 1.5; tlabel = "LAST 15s"; }
           if (this.onTimeMultiplier) this.onTimeMultiplier(mult, tlabel);
           break;
+        case "crowd_vote":
+          for (const [n, d] of Object.entries(msg.players)) {
+            if (n !== this.playerName) this.opponents[n] = d;
+            else if (d.score !== undefined) this.score = d.score;
+          }
+          if (this.onOpponentUpdate) this.onOpponentUpdate(msg.players);
+          if (msg.for === this.playerName && this.onCrowdVote) {
+            this.onCrowdVote(msg.votes[this.playerName] || 0);
+          }
+          break;
+        case "rematch":
+          this._resetForRematch();
+          if (this.onRematch) this.onRematch(msg.players, msg.duration, msg.difficulty);
+          break;
         case "game_ended":
           this._onEnd(msg.report);
           break;
@@ -328,6 +344,24 @@
       } else {
         this._onEnd(this._buildLocalReport());
       }
+    }
+
+    rematch() {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: "rematch" }));
+      }
+    }
+
+    _resetForRematch() {
+      clearInterval(this.timerInterval);
+      clearTimeout(this._soloChallengerId);
+      Object.assign(this, {
+        score: 0, opponents: {}, events: [], memeHistory: [],
+        startedAt: null, ended: false,
+        _uniqueExps: new Set(), _consecutiveNeutral: 0,
+        _lastExpression: null, _activeChallengeTarget: null, _challengeDeadline: 0,
+      });
+      // ws, roomCode, isHost, playerName, mode, duration, difficulty stay intact
     }
 
     /* ── Scoring (solo mode — battle scoring is server-side) ──────── */

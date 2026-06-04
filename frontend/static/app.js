@@ -1,27 +1,20 @@
 /* ─── Main App Controller ────────────────────────────────────────────────────
    Orchestrates: lobby → game → report screens.
-   Coordinates: camera, Claude analysis, game scoring, audio, graph, history.
 ────────────────────────────────────────────────────────────────────────────── */
 
-/* ── Screen routing ─────────────────────────────────────────────────────── */
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => (s.style.display = "none"));
   document.getElementById(id).style.display = "flex";
 }
 
-/* ── Analysis state ─────────────────────────────────────────────────────── */
 const state = {
-  active: false,
-  analyzing: false,
-  lastExpression: null,
-  streak: 0,
-  history: [],
-  intervalId: null,
-  INTERVAL_MS: 2800,
-  MAX_HISTORY: 10,
+  active: false, analyzing: false,
+  lastExpression: null, streak: 0,
+  history: [], intervalId: null,
+  INTERVAL_MS: 2800, MAX_HISTORY: 10,
 };
 
-/* ── DOM refs (game screen) ─────────────────────────────────────────────── */
+/* ── DOM refs ────────────────────────────────────────────────────────────── */
 const video           = document.getElementById("video");
 const canvasHidden    = document.getElementById("canvas-hidden");
 const ctx2d           = canvasHidden.getContext("2d");
@@ -54,8 +47,6 @@ const audioIcon       = document.getElementById("audio-icon");
 const audioLabel      = document.getElementById("audio-intensity-label");
 const volumeSlider    = document.getElementById("volume-slider");
 const modeBadge       = document.getElementById("mode-badge");
-
-/* ── DOM refs (new mod elements) ────────────────────────────────────────── */
 const challengeOverlay = document.getElementById("challenge-overlay");
 const chEmoji          = document.getElementById("ch-emoji");
 const chExpression     = document.getElementById("ch-expression");
@@ -73,14 +64,13 @@ const INTENSITY_COLORS = {
 const AUDIO_ICONS = ["🔇", "🔈", "🔉", "🔊", "🔊🔥"];
 
 let gameDuration = 60;
+let lastCountdownTick = -1;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   LOBBY LOGIC
+   LOBBY
 ══════════════════════════════════════════════════════════════════════════ */
 
-let selectedMode       = "solo";
-let selectedDuration   = 60;
-let selectedDifficulty = "easy";
+let selectedMode = "solo", selectedDuration = 60, selectedDifficulty = "easy";
 
 document.querySelectorAll(".mode-card").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -132,11 +122,9 @@ document.getElementById("create-room-btn").addEventListener("click", async () =>
     document.getElementById("room-code-big").textContent = code;
     document.getElementById("room-lobby").style.display = "flex";
     const spectatorLink = document.getElementById("spectator-link");
-    if (spectatorLink) {
-      spectatorLink.href = `/watch/${code}`;
-    }
+    if (spectatorLink) spectatorLink.href = `/watch/${code}`;
     showToast(`Room ${code} created — share the code!`);
-  } catch (e) {
+  } catch {
     showToast("Could not create room. Is the server running?");
   }
 });
@@ -152,11 +140,9 @@ document.getElementById("join-room-btn").addEventListener("click", async () => {
     document.getElementById("room-code-big").textContent = code;
     document.getElementById("room-lobby").style.display = "flex";
     const spectatorLink = document.getElementById("spectator-link");
-    if (spectatorLink) {
-      spectatorLink.href = `/watch/${code}`;
-    }
+    if (spectatorLink) spectatorLink.href = `/watch/${code}`;
     showToast(`Joined room ${code}!`);
-  } catch (e) {
+  } catch {
     showToast(`Room "${code}" not found.`);
   }
 });
@@ -171,11 +157,13 @@ document.getElementById("copy-code-btn").addEventListener("click", () => {
   navigator.clipboard.writeText(code).then(() => showToast(`Copied ${code}`));
 });
 
-/* ── Game callbacks from game.js ────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   GAME CALLBACKS
+══════════════════════════════════════════════════════════════════════════ */
+
 game.onPlayerJoined = (players, isHost) => {
   const list = document.getElementById("player-list-lobby");
-  if (!list) return;
-  list.innerHTML = players.map((p) => `<div class="player-chip">👤 ${p}</div>`).join("");
+  if (list) list.innerHTML = players.map((p) => `<div class="player-chip">👤 ${p}</div>`).join("");
   const startBtn2 = document.getElementById("start-battle-btn");
   if (startBtn2) {
     startBtn2.disabled = !isHost;
@@ -185,26 +173,25 @@ game.onPlayerJoined = (players, isHost) => {
 
 game.onGameStart = (duration) => {
   gameDuration = duration;
+  lastCountdownTick = -1;
   modeBadge.textContent = game.mode === "solo" ? "SOLO" : "BATTLE ⚔️";
-  if (game.mode === "battle") {
-    scorecard.style.display = "flex";
-    renderScorecard({});
-  }
-  if (duration > 0) {
-    updateTimerRing(duration, duration);
-    timerText.textContent = fmtTimer(duration);
-  } else {
-    timerText.textContent = "∞";
-  }
+  if (game.mode === "battle") { scorecard.style.display = "flex"; renderScorecard({}); }
+  if (duration > 0) { updateTimerRing(duration, duration); timerText.textContent = fmtTimer(duration); }
+  else timerText.textContent = "∞";
 };
 
 game.onTimerTick = (remaining) => {
   timerText.textContent = fmtTimer(remaining);
   updateTimerRing(remaining, gameDuration);
+  const s = Math.ceil(remaining);
+  if (s <= 5 && s > 0 && s !== lastCountdownTick) {
+    lastCountdownTick = s;
+    battleAudio.playEffect("countdown_tick");
+  }
 };
 
 game.onScoreUpdate = (newScore, delta) => {
-  flashScoreDelta(`+${delta}`);
+  if (delta > 0) flashScoreDelta(`+${delta}`);
 };
 
 game.onOpponentUpdate = (players) => {
@@ -214,6 +201,7 @@ game.onOpponentUpdate = (players) => {
 game.onGameEnd = (report) => {
   stopCamera();
   battleAudio.setIntensity(0);
+  battleAudio.playEffect("win");
   hideChallenge();
   if (timeMultBadge) timeMultBadge.style.display = "none";
   if (comebackBar) comebackBar.style.display = "none";
@@ -221,6 +209,7 @@ game.onGameEnd = (report) => {
 };
 
 /* ── Mod callbacks ──────────────────────────────────────────────────────── */
+
 let chProgressTimer = null;
 
 game.onChallenge = (emoji, target, window_s) => {
@@ -236,21 +225,27 @@ game.onChallenge = (emoji, target, window_s) => {
     chProgress.style.width = "0%";
   });
   chProgressTimer = setTimeout(() => hideChallenge(), window_s * 1000);
+  battleAudio.playEffect("challenge_start");
 };
 
-game.onChallengeExpired = () => {
-  hideChallenge();
-};
+game.onChallengeExpired = () => { hideChallenge(); };
 
 game.onBonuses = (labels) => {
   if (!bonusFeedEl) return;
-  labels.filter(Boolean).forEach((label) => {
+  const validLabels = labels.filter(Boolean);
+  validLabels.forEach((label) => {
     const pill = document.createElement("div");
     pill.className = "bonus-pill";
     pill.textContent = label;
     bonusFeedEl.appendChild(pill);
     setTimeout(() => pill.remove(), 3200);
   });
+  // Sound effects based on bonus type
+  const all = validLabels.join(" ");
+  if (all.includes("CHALLENGE COMPLETE"))      battleAudio.playEffect("challenge_complete");
+  else if (all.includes("Zoned out"))          battleAudio.playEffect("neutral_penalty");
+  else if (all.includes("NEW EXPRESSION"))     battleAudio.playEffect("new_expression");
+  else if (validLabels.some(l => l.includes("!") && l.includes("+"))) battleAudio.playEffect("combo");
 };
 
 game.onTimeMultiplier = (mult, label) => {
@@ -264,8 +259,44 @@ game.onTimeMultiplier = (mult, label) => {
 };
 
 game.onComeback = (active) => {
-  if (!comebackBar) return;
-  comebackBar.style.display = active ? "block" : "none";
+  if (comebackBar) comebackBar.style.display = active ? "block" : "none";
+};
+
+game.onCrowdVote = (count) => {
+  showToast(`👍 Crowd voted for you! (${count} vote${count !== 1 ? "s" : ""})`);
+  battleAudio.playEffect("crowd_vote");
+};
+
+game.onRematch = (players, duration, difficulty) => {
+  stopCamera();
+  hideChallenge();
+  if (timeMultBadge) timeMultBadge.style.display = "none";
+  if (comebackBar) comebackBar.style.display = "none";
+
+  state.history = []; state.streak = 0; state.lastExpression = null;
+  historyStrip.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);align-self:center">No memes yet…</span>`;
+  scorecard.style.display = "none";
+
+  selectedMode = "battle";
+  selectedDuration = duration;
+  selectedDifficulty = difficulty;
+
+  showScreen("screen-lobby");
+  document.getElementById("solo-start").style.display = "none";
+  document.getElementById("battle-options").style.display = "flex";
+  document.getElementById("room-lobby").style.display = "flex";
+  document.getElementById("room-code-big").textContent = game.roomCode || "----";
+
+  const list = document.getElementById("player-list-lobby");
+  if (list) list.innerHTML = players.map((p) => `<div class="player-chip">👤 ${p}</div>`).join("");
+
+  const startBtn2 = document.getElementById("start-battle-btn");
+  if (startBtn2) {
+    startBtn2.disabled = !game.isHost;
+    startBtn2.textContent = game.isHost ? "⚔️ Rematch!" : "Waiting for host…";
+  }
+
+  showToast(game.isHost ? "🔄 Rematch ready — start when ready!" : "🔄 Waiting for host to start rematch…");
 };
 
 function hideChallenge() {
@@ -283,7 +314,6 @@ function enterGameScreen() {
   startCamera();
 }
 
-/* ── Camera ─────────────────────────────────────────────────────────────── */
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -294,53 +324,35 @@ async function startCamera() {
     cameraPh.style.display = "none";
     video.style.display = "block";
     statusDot.classList.add("active");
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    shareBtn.disabled = false;
+    startBtn.disabled = true; stopBtn.disabled = false; shareBtn.disabled = false;
     state.active = true;
     battleAudio.unlock();
     scheduleAnalysis();
   } catch (err) {
     showToast("Camera access denied — allow it in browser settings.");
-    console.error(err);
   }
 }
 
 function stopCamera() {
   state.active = false;
   clearTimeout(state.intervalId);
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach((t) => t.stop());
-    video.srcObject = null;
-  }
-  video.style.display = "none";
-  cameraPh.style.display = "flex";
+  if (video.srcObject) { video.srcObject.getTracks().forEach((t) => t.stop()); video.srcObject = null; }
+  video.style.display = "none"; cameraPh.style.display = "flex";
   statusDot.classList.remove("active");
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  shareBtn.disabled = true;
+  startBtn.disabled = false; stopBtn.disabled = true; shareBtn.disabled = true;
   analyzerSpinner.classList.remove("show");
 }
 
-/* ── Frame capture ──────────────────────────────────────────────────────── */
 function captureFrame() {
-  canvasHidden.width = 320;
-  canvasHidden.height = 240;
-  ctx2d.save();
-  ctx2d.translate(320, 0);
-  ctx2d.scale(-1, 1);
-  ctx2d.drawImage(video, 0, 0, 320, 240);
-  ctx2d.restore();
+  canvasHidden.width = 320; canvasHidden.height = 240;
+  ctx2d.save(); ctx2d.translate(320, 0); ctx2d.scale(-1, 1);
+  ctx2d.drawImage(video, 0, 0, 320, 240); ctx2d.restore();
   return canvasHidden.toDataURL("image/jpeg", 0.5).split(",")[1];
 }
 
-/* ── Analysis loop ──────────────────────────────────────────────────────── */
 function scheduleAnalysis() {
   if (!state.active) return;
-  state.intervalId = setTimeout(async () => {
-    await runAnalysis();
-    scheduleAnalysis();
-  }, state.INTERVAL_MS);
+  state.intervalId = setTimeout(async () => { await runAnalysis(); scheduleAnalysis(); }, state.INTERVAL_MS);
 }
 
 async function runAnalysis() {
@@ -352,28 +364,19 @@ async function runAnalysis() {
     const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: captureFrame(),
-        context: contextInput.value.trim(),
-        streak: state.streak,
-      }),
+      body: JSON.stringify({ image: captureFrame(), context: contextInput.value.trim(), streak: state.streak }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     latencyTag.textContent = `${Date.now() - t0}ms`;
-
     updateStreak(data.expression);
     renderResult(data);
     addToHistory(data);
-
     const { scoreDelta, audioLevel } = game.reportExpression(
-      data.expression, data.intensity,
-      data.meme.name, data.meme.image_url,
-      state.streak
+      data.expression, data.intensity, data.meme.name, data.meme.image_url, state.streak
     );
     battleAudio.setIntensity(audioLevel);
     expressionGraph.push(data.expression, game.timeElapsed());
-
   } catch (err) {
     console.error("Analysis error:", err);
     latencyTag.textContent = "err";
@@ -383,54 +386,32 @@ async function runAnalysis() {
   }
 }
 
-/* ── Streak tracking ────────────────────────────────────────────────────── */
 function updateStreak(expression) {
-  if (expression === state.lastExpression) {
-    state.streak = Math.min(state.streak + 1, 15);
-  } else {
-    state.streak = 1;
-    state.lastExpression = expression;
-  }
-  if (state.streak >= 2) {
-    streakBadge.textContent = `🔥 ${state.streak}x`;
-    streakBadge.classList.add("show");
-  } else {
-    streakBadge.classList.remove("show");
-  }
+  const prev = state.streak;
+  if (expression === state.lastExpression) state.streak = Math.min(state.streak + 1, 15);
+  else { state.streak = 1; state.lastExpression = expression; }
+  if (state.streak >= 2) { streakBadge.textContent = `🔥 ${state.streak}x`; streakBadge.classList.add("show"); }
+  else streakBadge.classList.remove("show");
+  if (state.streak === 5 && prev < 5) battleAudio.playEffect("streak_5");
 }
 
-/* ── Render meme result ─────────────────────────────────────────────────── */
 function renderResult(data) {
   const { expression, intensity, emoji, meme, roast } = data;
-
   expressionEmoji.textContent = emoji;
   expressionLabel.textContent = expression;
   intensityFill.style.width = INTENSITY_WIDTHS[intensity] || "50%";
   intensityFill.style.background = INTENSITY_COLORS[intensity] || INTENSITY_COLORS.moderate;
-
   if (meme.accent) {
-    const r = parseInt(meme.accent.slice(1,3),16);
-    const g = parseInt(meme.accent.slice(3,5),16);
-    const b = parseInt(meme.accent.slice(5,7),16);
+    const r = parseInt(meme.accent.slice(1,3),16), g = parseInt(meme.accent.slice(3,5),16), b = parseInt(meme.accent.slice(5,7),16);
     memePanel.style.background = `radial-gradient(ellipse at center, rgba(${r},${g},${b},0.1) 0%, #0a0a0f 65%)`;
     memeCard.style.borderColor = meme.accent + "55";
   }
-
-  if (meme.image_url) {
-    memePlaceholder.style.display = "none";
-    memeImgWrap.style.display = "flex";
-    memeImg.src = meme.image_url;
-  }
-
+  if (meme.image_url) { memePlaceholder.style.display = "none"; memeImgWrap.style.display = "flex"; memeImg.src = meme.image_url; }
   memeNameTag.textContent = meme.name ? `📌 ${meme.name}` : "";
   roastText.textContent = roast ? `"${roast}"` : "";
-
-  memeCard.classList.remove("pop-in");
-  void memeCard.offsetWidth;
-  memeCard.classList.add("pop-in");
+  memeCard.classList.remove("pop-in"); void memeCard.offsetWidth; memeCard.classList.add("pop-in");
 }
 
-/* ── Score flash ────────────────────────────────────────────────────────── */
 let flashTimer;
 function flashScoreDelta(text) {
   scoreDeltaFlash.textContent = text;
@@ -439,13 +420,9 @@ function flashScoreDelta(text) {
   flashTimer = setTimeout(() => scoreDeltaFlash.classList.remove("show"), 900);
 }
 
-/* ── Scorecard (multiplayer) ────────────────────────────────────────────── */
 function renderScorecard(players) {
   const all = {
-    [game.playerName]: {
-      score: game.score, streak: state.streak,
-      last_expression: state.lastExpression, connected: true, comeback: false,
-    },
+    [game.playerName]: { score: game.score, streak: state.streak, last_expression: state.lastExpression, connected: true, comeback: false },
     ...players,
   };
   const sorted = Object.entries(all).sort((a, b) => b[1].score - a[1].score);
@@ -460,9 +437,8 @@ function renderScorecard(players) {
   `).join("");
 }
 
-/* ── Timer ──────────────────────────────────────────────────────────────── */
 function fmtTimer(sec) {
-  if (sec === Infinity || sec === 0 && gameDuration === 0) return "∞";
+  if (sec === Infinity || (sec === 0 && gameDuration === 0)) return "∞";
   const s = Math.ceil(sec);
   return s >= 60 ? `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}` : `${s}s`;
 }
@@ -475,7 +451,6 @@ function updateTimerRing(remaining, total) {
   timerArc.style.stroke = pct > 0.5 ? "#10b981" : pct > 0.25 ? "#f59e0b" : "#ef4444";
 }
 
-/* ── History strip ──────────────────────────────────────────────────────── */
 function addToHistory(data) {
   state.history.unshift(data);
   if (state.history.length > state.MAX_HISTORY) state.history.pop();
@@ -493,28 +468,22 @@ function renderHistory() {
     el.className = "history-item";
     el.style.borderColor = i === 0 ? (item.meme.accent || "var(--accent)") : "var(--border)";
     el.title = `${item.expression} — ${item.meme.name || ""}`;
-    if (item.meme.image_url) {
-      el.innerHTML = `<img src="${item.meme.image_url}" alt="${item.expression}" loading="lazy" />`;
-    } else {
-      el.innerHTML = `<span class="h-emoji">${item.emoji || "🎭"}</span>`;
-    }
+    el.innerHTML = item.meme.image_url
+      ? `<img src="${item.meme.image_url}" alt="${item.expression}" loading="lazy" />`
+      : `<span class="h-emoji">${item.emoji || "🎭"}</span>`;
     el.addEventListener("click", () => renderResult(item));
     historyStrip.appendChild(el);
   });
 }
 
-/* ── Share / screenshot ─────────────────────────────────────────────────── */
 async function shareCapture() {
   if (!state.history.length) { showToast("No meme yet — make a face first!"); return; }
-  const W = 900, H = 460;
-  const sc2 = document.createElement("canvas");
+  const W = 900, H = 460, sc2 = document.createElement("canvas");
   sc2.width = W; sc2.height = H;
   const c = sc2.getContext("2d");
-  c.fillStyle = "#0a0a0f";
-  c.fillRect(0, 0, W, H);
+  c.fillStyle = "#0a0a0f"; c.fillRect(0, 0, W, H);
   if (video.readyState >= 2) {
-    c.save(); c.translate(W/2,0); c.scale(-1,1);
-    c.drawImage(video, 0, 0, W/2, H); c.restore();
+    c.save(); c.translate(W/2,0); c.scale(-1,1); c.drawImage(video, 0, 0, W/2, H); c.restore();
     c.fillStyle="rgba(0,0,0,0.15)"; c.fillRect(0,0,W/2,H);
   }
   c.strokeStyle="#2a2a3a"; c.lineWidth=2;
@@ -526,8 +495,7 @@ async function shareCapture() {
       img.onload = () => {
         const mx=W/2+10, mw=W/2-20, mh=H-20;
         const scale=Math.min(mw/img.width,mh/img.height);
-        const dx=mx+(mw-img.width*scale)/2, dy=10+(mh-img.height*scale)/2;
-        c.drawImage(img,dx,dy,img.width*scale,img.height*scale); res();
+        c.drawImage(img, mx+(mw-img.width*scale)/2, 10+(mh-img.height*scale)/2, img.width*scale, img.height*scale); res();
       };
       img.onerror=res; img.src=last.meme.image_url;
     });
@@ -556,14 +524,15 @@ function showReportScreen(report) {
 
   const players = Object.entries(report.players);
   const isMulti = players.length > 1;
-  const winner = isMulti
-    ? players.sort((a, b) => b[1].score - a[1].score)[0][0]
-    : null;
+  const winner = isMulti ? players.sort((a, b) => b[1].score - a[1].score)[0][0] : null;
 
-  document.getElementById("report-title").textContent =
-    winner ? `🏆 ${winner} Wins!` : "Session Complete!";
+  document.getElementById("report-title").textContent = winner ? `🏆 ${winner} Wins!` : "Session Complete!";
   document.getElementById("report-subtitle").textContent =
     `${Math.round(report.duration_played)}s · ${players.reduce((s,[,p]) => s + p.total_expressions, 0)} expressions detected`;
+
+  // Rematch button only in battle mode
+  const rematchBtn = document.getElementById("rematch-btn");
+  if (rematchBtn) rematchBtn.style.display = isMulti && game.isHost ? "inline-flex" : "none";
 
   const cardsEl = document.getElementById("report-scorecards");
   cardsEl.innerHTML = players
@@ -579,9 +548,7 @@ function showReportScreen(report) {
           <span>🔥 Max streak: ${p.max_streak}x</span>
           ${p.crowd_votes ? `<span>👍 ${p.crowd_votes} crowd votes</span>` : ""}
         </div>
-        <div class="rpc-bar">
-          ${buildExpBar(p.expression_counts, p.total_expressions)}
-        </div>
+        <div class="rpc-bar">${buildExpBar(p.expression_counts, p.total_expressions)}</div>
       </div>
     `).join("");
 
@@ -595,8 +562,7 @@ function showReportScreen(report) {
         datasets: [{
           label: "Expression",
           data: allEvents.map(e => (window.EXP_VALUES||{})[e.expression] ?? 3),
-          borderColor: "#7c3aed",
-          backgroundColor: "rgba(124,58,237,0.1)",
+          borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,0.1)",
           pointBackgroundColor: allEvents.map(e => (window.EXP_COLORS||{})[e.expression] ?? "#888"),
           borderWidth: 2, pointRadius: 4, tension: 0.35, fill: true,
         }],
@@ -614,6 +580,40 @@ function showReportScreen(report) {
       },
     });
   }
+
+  // Personality profile — async, non-blocking
+  fetchPersonality(report);
+}
+
+async function fetchPersonality(report) {
+  const myData = report.players[game.playerName];
+  if (!myData || myData.total_expressions < 3) return;
+  const card = document.getElementById("personality-card");
+  if (!card) return;
+  card.style.display = "block";
+  document.getElementById("personality-title").textContent = "Analyzing your style…";
+  document.getElementById("personality-desc").textContent = "";
+  try {
+    const res = await fetch("/api/personality", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expression_counts: myData.expression_counts,
+        top_expression: myData.top_expression,
+        max_streak: myData.max_streak,
+        total_expressions: myData.total_expressions,
+      }),
+    });
+    const data = await res.json();
+    const lines = data.profile.split("\n").map(l => l.trim()).filter(Boolean);
+    document.getElementById("personality-title").textContent = lines[0] || data.profile;
+    document.getElementById("personality-desc").textContent = lines[1] || "";
+    const emojiMap = {happy:"😄",surprised:"😮",sad:"😢",angry:"😠",disgusted:"🤢",fearful:"😨",neutral:"😐"};
+    document.getElementById("personality-emoji").textContent = emojiMap[myData.top_expression] || "🎭";
+  } catch {
+    document.getElementById("personality-title").textContent = "The Mysterious One";
+    document.getElementById("personality-desc").textContent = "Your expressions defy all known classification.";
+  }
 }
 
 function getExpEmoji(exp) {
@@ -626,14 +626,63 @@ function buildExpBar(counts, total) {
   const t = Math.max(1, total);
   return all.map((e) => {
     const pct = Math.round(((counts[e]||0)/t)*100);
-    return pct > 0
-      ? `<div class="exp-seg" style="width:${pct}%;background:${colors[e]}" title="${e}: ${pct}%"></div>`
-      : "";
+    return pct > 0 ? `<div class="exp-seg" style="width:${pct}%;background:${colors[e]}" title="${e}: ${pct}%"></div>` : "";
   }).join("");
 }
 
+/* ── GIF export ─────────────────────────────────────────────────────────── */
+
+async function exportGIF() {
+  if (!window.gifshot) { showToast("GIF encoder not loaded."); return; }
+  const urls = (game.memeHistory || []).filter(Boolean);
+  if (urls.length < 2) { showToast("Need at least 2 memes for a GIF — keep playing!"); return; }
+
+  const btn = document.getElementById("export-gif-btn");
+  if (btn) btn.disabled = true;
+  showToast("🎞 Building GIF…");
+
+  // Pre-render to canvas data URLs to bypass CORS
+  const dataUrls = await Promise.all(urls.slice(0, 8).map(url => new Promise(resolve => {
+    const img = new Image(); img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = 320; c.height = 240;
+      const cx = c.getContext("2d");
+      cx.fillStyle = "#0a0a0f"; cx.fillRect(0, 0, 320, 240);
+      const scale = Math.min(320 / img.width, 240 / img.height);
+      cx.drawImage(img, (320 - img.width * scale) / 2, (240 - img.height * scale) / 2, img.width * scale, img.height * scale);
+      resolve(c.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  })));
+
+  const valid = dataUrls.filter(Boolean);
+  if (valid.length < 2) { showToast("Could not load memes."); if (btn) btn.disabled = false; return; }
+
+  gifshot.createGIF({
+    images: valid, gifWidth: 320, gifHeight: 240, interval: 0.65,
+  }, (obj) => {
+    if (btn) btn.disabled = false;
+    if (obj.error) { showToast("GIF creation failed."); return; }
+    const link = document.createElement("a");
+    link.download = `meme-battle-${Date.now()}.gif`;
+    link.href = obj.image; link.click();
+    showToast("🎞 GIF saved!");
+  });
+}
+
+/* ── Report action buttons ──────────────────────────────────────────────── */
+
 document.getElementById("download-report-btn").addEventListener("click", () => {
   if (lastReport) downloadReport(lastReport);
+});
+document.getElementById("export-gif-btn").addEventListener("click", exportGIF);
+document.getElementById("battle-card-btn").addEventListener("click", () => {
+  if (lastReport) downloadBattleCard(lastReport);
+});
+document.getElementById("rematch-btn").addEventListener("click", () => {
+  if (!game.isHost) { showToast("Only the host can start a rematch."); return; }
+  game.rematch();
 });
 document.getElementById("share-report-btn").addEventListener("click", () => {
   if (lastReport) shareReport(lastReport);
@@ -641,13 +690,13 @@ document.getElementById("share-report-btn").addEventListener("click", () => {
 document.getElementById("play-again-btn").addEventListener("click", () => {
   game.reset();
   expressionGraph.reset();
-  state.streak = 0;
-  state.lastExpression = null;
-  state.history = [];
+  state.streak = 0; state.lastExpression = null; state.history = [];
   historyStrip.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);align-self:center">No memes yet…</span>`;
   scorecard.style.display = "none";
   if (comebackBar) comebackBar.style.display = "none";
   if (timeMultBadge) timeMultBadge.style.display = "none";
+  const card = document.getElementById("personality-card");
+  if (card) card.style.display = "none";
   lastReport = null;
   showScreen("screen-lobby");
 });
@@ -665,8 +714,7 @@ endGameBtn.addEventListener("click", () => {
 });
 
 volumeSlider.addEventListener("input", () => {
-  const v = parseInt(volumeSlider.value) / 100;
-  battleAudio.setVolume(v);
+  battleAudio.setVolume(parseInt(volumeSlider.value) / 100);
 });
 
 window.addEventListener("audio-intensity", (e) => {
@@ -688,8 +736,7 @@ document.addEventListener("keydown", (e) => {
 let toastTimer;
 function showToast(msg) {
   const toast = document.getElementById("toast");
-  toast.textContent = msg;
-  toast.classList.add("show");
+  toast.textContent = msg; toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
 }
@@ -699,9 +746,7 @@ window.showToast = showToast;
 fetch("/api/health")
   .then((r) => r.json())
   .then((d) => {
-    if (!d.imgflip_credentials) {
-      showToast("⚠️ Set IMGFLIP_USERNAME + IMGFLIP_PASSWORD in .env for captioned memes");
-    }
+    if (!d.imgflip_credentials) showToast("⚠️ Set IMGFLIP_USERNAME + IMGFLIP_PASSWORD in .env for captioned memes");
   })
   .catch(() => showToast("⚠️ Backend offline. Run: ./run.sh"));
 
