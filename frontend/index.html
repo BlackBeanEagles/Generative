@@ -19,7 +19,7 @@
     </div>
     <div class="header-right">
       <span id="status-dot" class="status-dot"></span>
-      <span style="font-size:0.75rem;color:var(--text-dim)">Powered by Claude</span>
+      <span style="font-size:0.75rem;color:var(--text-dim)">Claude + Imgflip</span>
     </div>
   </header>
 
@@ -54,25 +54,36 @@
       <div id="camera-placeholder" class="camera-placeholder">
         <span class="icon">📷</span>
         <span style="font-size:0.9rem">Click <strong>Start Camera</strong> to begin</span>
-        <span style="font-size:0.75rem;color:var(--text-dim)">Your face stays private — frames are analyzed and discarded</span>
+        <span style="font-size:0.75rem;color:var(--text-dim)">Frames are analyzed then discarded — nothing is stored</span>
       </div>
     </div>
 
     <!-- Meme Side -->
-    <div class="meme-panel">
+    <div class="meme-panel" id="meme-panel">
       <div id="meme-card">
-        <div class="meme-inner" style="background:linear-gradient(135deg,#1a1a26 0%,#12121a 100%)">
+        <!-- Placeholder state -->
+        <div id="meme-placeholder" class="meme-placeholder">
+          <span style="font-size:3rem">🎭</span>
+          <span style="color:var(--text-dim);font-size:0.9rem">Make a face to get your meme</span>
+        </div>
+
+        <!-- Actual meme image (hidden until first result) -->
+        <div id="meme-img-wrap" class="meme-img-wrap" style="display:none">
           <div id="analyzing-spinner" class="analyzing-spinner"></div>
-          <p id="meme-top" class="meme-top-text" style="color:#888899">START CAMERA</p>
-          <div id="meme-emoji" class="meme-emoji-big">🎭</div>
-          <p id="meme-name" class="meme-name-tag">MAKE A FACE</p>
-          <p id="meme-bottom" class="meme-bottom-text" style="color:#888899">AI WILL DO THE REST</p>
+          <img id="meme-img" src="" alt="Generated meme" />
+          <div class="meme-caption-overlay">
+            <p id="meme-top" class="meme-text meme-text-top"></p>
+            <p id="meme-bottom" class="meme-text meme-text-bottom"></p>
+          </div>
         </div>
       </div>
 
-      <div class="roast-box">
-        <span class="roast-label">AI Roast</span>
-        <span id="roast-text">Start the camera and make a face…</span>
+      <div class="meme-meta">
+        <span id="meme-name-tag" class="meme-name-tag"></span>
+        <div class="roast-box">
+          <span class="roast-label">AI Roast</span>
+          <span id="roast-text">Start the camera and make a face…</span>
+        </div>
       </div>
     </div>
 
@@ -87,7 +98,7 @@
       placeholder="e.g. 'at work', 'gaming', 'first date', 'watching horror movie'…"
       maxlength="80"
     />
-    <span style="font-size:0.72rem;color:var(--text-dim)">AI uses this to make memes more relevant</span>
+    <span style="font-size:0.72rem;color:var(--text-dim)">Claude tailors captions to your situation</span>
   </div>
 
   <!-- ─── Bottom Bar ─── -->
