@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MemeExpression — Real-Time AI Meme Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- ─── Header ─── -->
+  <header>
+    <div class="logo">
+      <span class="logo-icon">🎭</span>
+      <span>MemeExpression</span>
+      <span class="badge">LIVE AI</span>
+    </div>
+    <div class="header-right">
+      <span id="status-dot" class="status-dot"></span>
+      <span style="font-size:0.75rem;color:var(--text-dim)">Powered by Claude</span>
+    </div>
+  </header>
+
+  <!-- ─── Expression Status Bar ─── -->
+  <div id="expression-bar">
+    <div class="expression-indicator">
+      <span id="expression-emoji" class="expression-emoji">😐</span>
+      <span id="expression-label" class="expression-label">Waiting…</span>
+    </div>
+    <div class="intensity-bar-wrap">
+      <div class="intensity-bar-track">
+        <div id="intensity-fill" class="intensity-bar-fill" style="width:0%"></div>
+      </div>
+    </div>
+    <span id="streak-badge" class="streak-badge"></span>
+    <span id="latency-tag" class="latency-tag">—ms</span>
+  </div>
+
+  <!-- ─── Main Split View ─── -->
+  <div class="main-grid">
+
+    <!-- Camera Side -->
+    <div class="camera-panel">
+      <video id="video" autoplay playsinline style="display:none"></video>
+      <canvas id="canvas-hidden"></canvas>
+
+      <div class="camera-overlay">
+        <div class="scan-ring"></div>
+        <span class="scan-label">Scanning…</span>
+      </div>
+
+      <div id="camera-placeholder" class="camera-placeholder">
+        <span class="icon">📷</span>
+        <span style="font-size:0.9rem">Click <strong>Start Camera</strong> to begin</span>
+        <span style="font-size:0.75rem;color:var(--text-dim)">Your face stays private — frames are analyzed and discarded</span>
+      </div>
+    </div>
+
+    <!-- Meme Side -->
+    <div class="meme-panel">
+      <div id="meme-card">
+        <div class="meme-inner" style="background:linear-gradient(135deg,#1a1a26 0%,#12121a 100%)">
+          <div id="analyzing-spinner" class="analyzing-spinner"></div>
+          <p id="meme-top" class="meme-top-text" style="color:#888899">START CAMERA</p>
+          <div id="meme-emoji" class="meme-emoji-big">🎭</div>
+          <p id="meme-name" class="meme-name-tag">MAKE A FACE</p>
+          <p id="meme-bottom" class="meme-bottom-text" style="color:#888899">AI WILL DO THE REST</p>
+        </div>
+      </div>
+
+      <div class="roast-box">
+        <span class="roast-label">AI Roast</span>
+        <span id="roast-text">Start the camera and make a face…</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── Context Bar ─── -->
+  <div class="context-bar">
+    <span class="context-label">Context</span>
+    <input
+      id="context-input"
+      type="text"
+      placeholder="e.g. 'at work', 'gaming', 'first date', 'watching horror movie'…"
+      maxlength="80"
+    />
+    <span style="font-size:0.72rem;color:var(--text-dim)">AI uses this to make memes more relevant</span>
+  </div>
+
+  <!-- ─── Bottom Bar ─── -->
+  <div class="bottom-bar">
+    <span class="history-label">History</span>
+    <div id="history-strip">
+      <span style="font-size:0.75rem;color:var(--text-dim);align-self:center">No memes yet…</span>
+    </div>
+    <div class="btn-group">
+      <button id="start-btn" class="btn btn-primary">▶ Start Camera</button>
+      <button id="stop-btn" class="btn btn-danger" disabled>■ Stop</button>
+      <button id="share-btn" class="btn btn-secondary" disabled>📸 Save Meme</button>
+    </div>
+  </div>
+
+  <!-- ─── Toast ─── -->
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
