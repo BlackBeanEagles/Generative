@@ -42,8 +42,25 @@
         </button>
       </div>
 
+      <!-- Difficulty (Mod 5) -->
+      <label class="field-label" style="margin-top:18px">Difficulty</label>
+      <div class="diff-row" id="diff-row">
+        <button class="diff-btn active" data-diff="easy">
+          <span>😌</span><span class="diff-name">Easy</span>
+          <span class="diff-sub">All intensities score</span>
+        </button>
+        <button class="diff-btn" data-diff="hard">
+          <span>💪</span><span class="diff-name">Hard</span>
+          <span class="diff-sub">Mild = 0 pts</span>
+        </button>
+        <button class="diff-btn" data-diff="expert">
+          <span>🔥</span><span class="diff-name">Expert</span>
+          <span class="diff-sub">Only STRONG counts</span>
+        </button>
+      </div>
+
       <!-- Duration -->
-      <label class="field-label" style="margin-top:18px">Session Duration</label>
+      <label class="field-label" style="margin-top:16px">Session Duration</label>
       <div class="dur-row" id="dur-row">
         <button class="dur-btn" data-dur="30">30s</button>
         <button class="dur-btn active" data-dur="60">1 min</button>
@@ -76,6 +93,9 @@
           <button class="copy-btn" id="copy-code-btn" title="Copy code">📋</button>
         </div>
         <p class="room-hint">Share this code with your opponent — they open this page and join</p>
+        <p class="room-hint" style="margin-top:4px">
+          Spectators: <a id="spectator-link" href="#" target="_blank" style="color:var(--accent)">watch link</a>
+        </p>
         <div id="player-list-lobby" class="player-list-lobby"></div>
         <button id="start-battle-btn" class="btn btn-primary btn-lg" style="margin-top:14px">
           ⚔️ Start Battle!
@@ -116,6 +136,25 @@
       <span id="status-dot" class="status-dot"></span>
     </div>
   </header>
+
+  <!-- Mod 3/9: Challenge overlay -->
+  <div id="challenge-overlay" class="challenge-overlay">
+    <div class="ch-inner">
+      <span class="ch-label">CHALLENGE!</span>
+      <span id="ch-emoji" class="ch-emoji">😮</span>
+      <span id="ch-expression" class="ch-expression">SURPRISED</span>
+      <div class="ch-bar-track"><div id="ch-progress" class="ch-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Mod 2: Combo + bonus feed (top-right of game screen) -->
+  <div id="bonus-feed" class="bonus-feed"></div>
+
+  <!-- Mod 7: Time multiplier badge -->
+  <div id="time-mult-badge" class="time-mult-badge" style="display:none"></div>
+
+  <!-- Mod 10: Comeback indicator -->
+  <div id="comeback-bar" class="comeback-bar" style="display:none">⚡ COMEBACK MODE ACTIVE — ×1.5 pts</div>
 
   <!-- Scorecard (hidden in solo) -->
   <div id="scorecard" class="scorecard" style="display:none"></div>

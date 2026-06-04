@@ -55,6 +55,15 @@ const audioLabel      = document.getElementById("audio-intensity-label");
 const volumeSlider    = document.getElementById("volume-slider");
 const modeBadge       = document.getElementById("mode-badge");
 
+/* ── DOM refs (new mod elements) ────────────────────────────────────────── */
+const challengeOverlay = document.getElementById("challenge-overlay");
+const chEmoji          = document.getElementById("ch-emoji");
+const chExpression     = document.getElementById("ch-expression");
+const chProgress       = document.getElementById("ch-progress");
+const bonusFeedEl      = document.getElementById("bonus-feed");
+const timeMultBadge    = document.getElementById("time-mult-badge");
+const comebackBar      = document.getElementById("comeback-bar");
+
 const INTENSITY_WIDTHS = { mild: "33%", moderate: "66%", strong: "100%" };
 const INTENSITY_COLORS = {
   mild:     "linear-gradient(90deg,#7c3aed,#a855f7)",
@@ -63,14 +72,15 @@ const INTENSITY_COLORS = {
 };
 const AUDIO_ICONS = ["🔇", "🔈", "🔉", "🔊", "🔊🔥"];
 
-let gameDuration = 60; // stored for timer ring
+let gameDuration = 60;
 
 /* ══════════════════════════════════════════════════════════════════════════
    LOBBY LOGIC
 ══════════════════════════════════════════════════════════════════════════ */
 
-let selectedMode = "solo";
-let selectedDuration = 60;
+let selectedMode       = "solo";
+let selectedDuration   = 60;
+let selectedDifficulty = "easy";
 
 document.querySelectorAll(".mode-card").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -92,10 +102,20 @@ document.querySelectorAll(".dur-btn").forEach((btn) => {
   });
 });
 
+document.querySelectorAll(".diff-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".diff-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    selectedDifficulty = btn.dataset.diff;
+    game.difficulty = selectedDifficulty;
+  });
+});
+
 document.getElementById("start-solo-btn").addEventListener("click", () => {
   const name = document.getElementById("player-name").value.trim() || "Player";
   game.playerName = name;
   game.duration = selectedDuration;
+  game.difficulty = selectedDifficulty;
   game.mode = "solo";
   enterGameScreen();
   game.startSolo();
@@ -106,10 +126,15 @@ document.getElementById("create-room-btn").addEventListener("click", async () =>
   const name = document.getElementById("player-name").value.trim() || "Player";
   game.playerName = name;
   game.duration = selectedDuration;
+  game.difficulty = selectedDifficulty;
   try {
     const code = await game.createRoom();
     document.getElementById("room-code-big").textContent = code;
     document.getElementById("room-lobby").style.display = "flex";
+    const spectatorLink = document.getElementById("spectator-link");
+    if (spectatorLink) {
+      spectatorLink.href = `/watch/${code}`;
+    }
     showToast(`Room ${code} created — share the code!`);
   } catch (e) {
     showToast("Could not create room. Is the server running?");
@@ -126,6 +151,10 @@ document.getElementById("join-room-btn").addEventListener("click", async () => {
     await game.joinRoom(code);
     document.getElementById("room-code-big").textContent = code;
     document.getElementById("room-lobby").style.display = "flex";
+    const spectatorLink = document.getElementById("spectator-link");
+    if (spectatorLink) {
+      spectatorLink.href = `/watch/${code}`;
+    }
     showToast(`Joined room ${code}!`);
   } catch (e) {
     showToast(`Room "${code}" not found.`);
@@ -142,7 +171,7 @@ document.getElementById("copy-code-btn").addEventListener("click", () => {
   navigator.clipboard.writeText(code).then(() => showToast(`Copied ${code}`));
 });
 
-// Game callbacks from game.js
+/* ── Game callbacks from game.js ────────────────────────────────────────── */
 game.onPlayerJoined = (players, isHost) => {
   const list = document.getElementById("player-list-lobby");
   if (!list) return;
@@ -185,8 +214,64 @@ game.onOpponentUpdate = (players) => {
 game.onGameEnd = (report) => {
   stopCamera();
   battleAudio.setIntensity(0);
+  hideChallenge();
+  if (timeMultBadge) timeMultBadge.style.display = "none";
+  if (comebackBar) comebackBar.style.display = "none";
   showReportScreen(report);
 };
+
+/* ── Mod callbacks ──────────────────────────────────────────────────────── */
+let chProgressTimer = null;
+
+game.onChallenge = (emoji, target, window_s) => {
+  if (!challengeOverlay) return;
+  chEmoji.textContent = emoji;
+  chExpression.textContent = target.toUpperCase();
+  challengeOverlay.classList.add("show");
+  chProgress.style.transition = "none";
+  chProgress.style.width = "100%";
+  clearTimeout(chProgressTimer);
+  requestAnimationFrame(() => {
+    chProgress.style.transition = `width ${window_s}s linear`;
+    chProgress.style.width = "0%";
+  });
+  chProgressTimer = setTimeout(() => hideChallenge(), window_s * 1000);
+};
+
+game.onChallengeExpired = () => {
+  hideChallenge();
+};
+
+game.onBonuses = (labels) => {
+  if (!bonusFeedEl) return;
+  labels.filter(Boolean).forEach((label) => {
+    const pill = document.createElement("div");
+    pill.className = "bonus-pill";
+    pill.textContent = label;
+    bonusFeedEl.appendChild(pill);
+    setTimeout(() => pill.remove(), 3200);
+  });
+};
+
+game.onTimeMultiplier = (mult, label) => {
+  if (!timeMultBadge) return;
+  if (mult > 1.0 && label) {
+    timeMultBadge.textContent = `⏱ ${label} ×${Math.round(mult)}`;
+    timeMultBadge.style.display = "block";
+  } else {
+    timeMultBadge.style.display = "none";
+  }
+};
+
+game.onComeback = (active) => {
+  if (!comebackBar) return;
+  comebackBar.style.display = active ? "block" : "none";
+};
+
+function hideChallenge() {
+  if (challengeOverlay) challengeOverlay.classList.remove("show");
+  clearTimeout(chProgressTimer);
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    GAME SCREEN
@@ -281,7 +366,6 @@ async function runAnalysis() {
     renderResult(data);
     addToHistory(data);
 
-    // ── Integrate with game scoring, audio, graph ──
     const { scoreDelta, audioLevel } = game.reportExpression(
       data.expression, data.intensity,
       data.meme.name, data.meme.image_url,
@@ -357,14 +441,21 @@ function flashScoreDelta(text) {
 
 /* ── Scorecard (multiplayer) ────────────────────────────────────────────── */
 function renderScorecard(players) {
-  const all = { [game.playerName]: { score: game.score, streak: state.streak, last_expression: state.lastExpression, connected: true }, ...players };
+  const all = {
+    [game.playerName]: {
+      score: game.score, streak: state.streak,
+      last_expression: state.lastExpression, connected: true, comeback: false,
+    },
+    ...players,
+  };
   const sorted = Object.entries(all).sort((a, b) => b[1].score - a[1].score);
   scorecard.innerHTML = sorted.map(([name, p], i) => `
-    <div class="sc-player ${name === game.playerName ? "sc-me" : ""}">
+    <div class="sc-player ${name === game.playerName ? "sc-me" : ""} ${p.comeback ? "sc-comeback" : ""}">
       <span class="sc-rank">#${i + 1}</span>
       <span class="sc-name">${name}</span>
       <span class="sc-score">${p.score || 0}</span>
       ${p.streak >= 2 ? `<span class="sc-streak">🔥${p.streak}x</span>` : ""}
+      ${p.comeback ? `<span class="sc-comeback-tag">⚡</span>` : ""}
     </div>
   `).join("");
 }
@@ -474,7 +565,6 @@ function showReportScreen(report) {
   document.getElementById("report-subtitle").textContent =
     `${Math.round(report.duration_played)}s · ${players.reduce((s,[,p]) => s + p.total_expressions, 0)} expressions detected`;
 
-  // Player scorecards
   const cardsEl = document.getElementById("report-scorecards");
   cardsEl.innerHTML = players
     .sort((a,b) => b[1].score - a[1].score)
@@ -487,6 +577,7 @@ function showReportScreen(report) {
           <span>${p.total_expressions} expressions</span>
           <span>Top: ${p.top_expression} ${getExpEmoji(p.top_expression)}</span>
           <span>🔥 Max streak: ${p.max_streak}x</span>
+          ${p.crowd_votes ? `<span>👍 ${p.crowd_votes} crowd votes</span>` : ""}
         </div>
         <div class="rpc-bar">
           ${buildExpBar(p.expression_counts, p.total_expressions)}
@@ -494,7 +585,6 @@ function showReportScreen(report) {
       </div>
     `).join("");
 
-  // Rebuild graph in report screen
   const reportChart = document.getElementById("report-chart");
   if (reportChart && window.Chart) {
     const allEvents = players.flatMap(([,p]) => p.events).sort((a,b) => a.t - b.t);
@@ -556,6 +646,8 @@ document.getElementById("play-again-btn").addEventListener("click", () => {
   state.history = [];
   historyStrip.innerHTML = `<span style="font-size:0.75rem;color:var(--text-dim);align-self:center">No memes yet…</span>`;
   scorecard.style.display = "none";
+  if (comebackBar) comebackBar.style.display = "none";
+  if (timeMultBadge) timeMultBadge.style.display = "none";
   lastReport = null;
   showScreen("screen-lobby");
 });
@@ -583,7 +675,6 @@ window.addEventListener("audio-intensity", (e) => {
   audioLabel.textContent = label;
 });
 
-// Space = instant re-analysis
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && state.active && !state.analyzing &&
       document.getElementById("screen-game").style.display !== "none") {
@@ -614,7 +705,6 @@ fetch("/api/health")
   })
   .catch(() => showToast("⚠️ Backend offline. Run: ./run.sh"));
 
-// Timer SVG setup
 if (timerArc) {
   const circumference = 2 * Math.PI * 24;
   timerArc.style.strokeDasharray = circumference;

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MemeExpression — Spectator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26;
+      --border: #2a2a3a; --text: #e8e8f0; --text-dim: #888899;
+      --accent: #7c3aed; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px; border-bottom: 1px solid var(--border);
+      background: rgba(18,18,26,0.97);
+    }
+    .logo { display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; }
+    .badge { font-size: 0.6rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--warning); color: #000; }
+    .room-tag { font-size: 0.75rem; color: var(--text-dim); }
+    .room-tag strong { color: var(--accent); letter-spacing: 2px; }
+
+    #waiting { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 14px; color: var(--text-dim); }
+    .wait-icon { font-size: 3rem; }
+
+    .players-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 20px; }
+
+    .player-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      transition: border-color 0.3s;
+    }
+    .player-card.comeback { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.2); }
+
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; }
+    .player-name { font-size: 1rem; font-weight: 700; }
+    .player-score { font-size: 1.6rem; font-weight: 900; color: var(--accent); }
+
+    .meme-frame { width: 100%; aspect-ratio: 16/9; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .meme-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .meme-placeholder { font-size: 3rem; opacity: 0.2; }
+
+    .card-footer { padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .expression-pill {
+      font-size: 0.75rem; font-weight: 600; padding: 3px 10px;
+      border-radius: 999px; background: var(--surface2); border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .streak-tag { font-size: 0.7rem; color: var(--warning); font-weight: 700; }
+    .comeback-tag { font-size: 0.68rem; color: #3b82f6; font-weight: 700; }
+
+    .vote-btn {
+      padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text); font-size: 0.78rem;
+      font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 5px;
+    }
+    .vote-btn:hover { border-color: var(--warning); background: rgba(245,158,11,0.15); color: var(--warning); }
+    .vote-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .vote-count { font-size: 0.65rem; color: var(--text-dim); }
+
+    #challenge-banner {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%) translateY(-80px);
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      border-radius: 12px; padding: 14px 28px; text-align: center;
+      z-index: 100; transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      box-shadow: 0 8px 30px rgba(124,58,237,0.5);
+    }
+    #challenge-banner.show { transform: translateX(-50%) translateY(0); }
+    .ch-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; opacity: 0.7; }
+    .ch-target { font-size: 1.4rem; font-weight: 900; }
+    .ch-bar { height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .ch-fill { height: 100%; background: white; border-radius: 2px; transition: width 1s linear; }
+
+    #bonus-feed { position: fixed; bottom: 80px; right: 20px; display: flex; flex-direction: column; gap: 6px; z-index: 100; pointer-events: none; }
+    .bonus-pill {
+      background: var(--surface); border: 1px solid var(--accent);
+      border-radius: 999px; padding: 5px 14px; font-size: 0.78rem; font-weight: 700;
+      color: var(--accent); animation: slideIn 0.3s ease, fadeOut 0.5s ease 2.5s forwards;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes fadeOut { to { opacity: 0; } }
+
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 16px; font-size: 0.82rem; z-index: 999; transform: translateY(16px); opacity: 0; transition: all 0.3s; pointer-events: none; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span>🎭</span> MemeExpression
+    <span class="badge">👀 SPECTATOR</span>
+  </div>
+  <div class="room-tag">Room: <strong id="room-code-label">----</strong></div>
+</header>
+
+<div id="waiting">
+  <span class="wait-icon">🍿</span>
+  <span id="wait-text">Waiting for the battle to start…</span>
+</div>
+
+<div id="challenge-banner">
+  <div class="ch-label">CHALLENGE!</div>
+  <div class="ch-target" id="ch-target-text">😮 SURPRISED</div>
+  <div class="ch-bar"><div class="ch-fill" id="ch-fill"></div></div>
+</div>
+
+<div class="players-grid" id="players-grid" style="display:none"></div>
+
+<div id="bonus-feed"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+  const code = location.pathname.split("/").pop().toUpperCase();
+  document.getElementById("room-code-label").textContent = code;
+
+  const playerCards = {};   // name → card DOM element
+  const playerVotes = {};   // name → vote count
+  let hasVotedThisRound = false;
+
+  const waitEl     = document.getElementById("waiting");
+  const gridEl     = document.getElementById("players-grid");
+  const chBanner   = document.getElementById("challenge-banner");
+  const chTarget   = document.getElementById("ch-target-text");
+  const chFill     = document.getElementById("ch-fill");
+  const bonusFeed  = document.getElementById("bonus-feed");
+  let chTimer      = null;
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws-watch/${code}`);
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case "room_state":
+        if (msg.started) { waitEl.style.display = "none"; gridEl.style.display = "grid"; }
+        updateAllPlayers(msg.players);
+        break;
+      case "game_started":
+        waitEl.style.display = "none"; gridEl.style.display = "grid";
+        showToast("⚔️ Battle started!");
+        break;
+      case "score_update":
+        updateAllPlayers(msg.players);
+        if (msg.bonuses?.length) msg.bonuses.forEach(showBonus);
+        hasVotedThisRound = false; // allow new vote
+        break;
+      case "crowd_vote":
+        updateAllPlayers(msg.players);
+        Object.assign(playerVotes, msg.votes);
+        refreshVoteCounts();
+        showToast(`👍 ${msg.for} got a crowd vote!`);
+        break;
+      case "challenge":
+        showChallenge(msg.emoji, msg.target, msg.window);
+        break;
+      case "challenge_expired":
+        hideChallenge();
+        break;
+      case "game_ended":
+        showGameOver(msg.report);
+        break;
+    }
+  };
+  ws.onerror = () => showToast("Connection error.");
+
+  function buildCard(name) {
+    const div = document.createElement("div");
+    div.className = "player-card";
+    div.dataset.name = name;
+    div.innerHTML = `
+      <div class="card-header">
+        <span class="player-name">${name}</span>
+        <span class="player-score" id="score-${name}">0</span>
+      </div>
+      <div class="meme-frame" id="meme-${name}"><span class="meme-placeholder">🎭</span></div>
+      <div class="card-footer">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span class="expression-pill" id="exp-${name}">😐 neutral</span>
+          <span id="tags-${name}" style="display:flex;gap:6px;font-size:0.68rem"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <button class="vote-btn" id="vote-${name}" onclick="castVote('${name}')">
+            👍 Vote <span class="vote-count" id="vc-${name}">(0)</span>
+          </button>
+        </div>
+      </div>
+    `;
+    return div;
+  }
+
+  function updateAllPlayers(players) {
+    for (const [name, data] of Object.entries(players)) {
+      if (!playerCards[name]) {
+        const card = buildCard(name);
+        playerCards[name] = card;
+        gridEl.appendChild(card);
+      }
+      const card = playerCards[name];
+      document.getElementById(`score-${name}`).textContent = data.score;
+
+      if (data.meme_url) {
+        const frame = document.getElementById(`meme-${name}`);
+        frame.innerHTML = `<img src="${data.meme_url}" alt="meme" />`;
+      }
+
+      const exp = data.last_expression || "neutral";
+      const expEmojis = {happy:"😄",surprised:"😮",sad:"😢",angry:"😠",disgusted:"🤢",fearful:"😨",neutral:"😐"};
+      document.getElementById(`exp-${name}`).textContent = `${expEmojis[exp]||"😐"} ${exp}`;
+
+      const tagsEl = document.getElementById(`tags-${name}`);
+      tagsEl.innerHTML = "";
+      if ((data.streak || 0) >= 2) {
+        const s = document.createElement("span");
+        s.className = "streak-tag"; s.textContent = `🔥 ${data.streak}x`;
+        tagsEl.appendChild(s);
+      }
+      if (data.comeback) {
+        card.classList.add("comeback");
+        const c = document.createElement("span");
+        c.className = "comeback-tag"; c.textContent = "⚡ COMEBACK";
+        tagsEl.appendChild(c);
+      } else {
+        card.classList.remove("comeback");
+      }
+    }
+  }
+
+  function castVote(name) {
+    if (hasVotedThisRound) { showToast("You already voted this round!"); return; }
+    ws.send(JSON.stringify({ type: "vote", for: name }));
+    hasVotedThisRound = true;
+    showToast(`Voted for ${name}! 👍`);
+  }
+
+  function refreshVoteCounts() {
+    for (const [name, count] of Object.entries(playerVotes)) {
+      const el = document.getElementById(`vc-${name}`);
+      if (el) el.textContent = `(${count})`;
+    }
+  }
+
+  function showChallenge(emoji, target, window_s) {
+    chTarget.textContent = `${emoji} ${target.toUpperCase()}`;
+    chFill.style.transition = "none";
+    chFill.style.width = "100%";
+    chBanner.classList.add("show");
+    clearTimeout(chTimer);
+    requestAnimationFrame(() => {
+      chFill.style.transition = `width ${window_s}s linear`;
+      chFill.style.width = "0%";
+    });
+    chTimer = setTimeout(hideChallenge, window_s * 1000);
+  }
+
+  function hideChallenge() {
+    chBanner.classList.remove("show");
+    clearTimeout(chTimer);
+  }
+
+  function showBonus(text) {
+    const pill = document.createElement("div");
+    pill.className = "bonus-pill";
+    pill.textContent = text;
+    bonusFeed.appendChild(pill);
+    setTimeout(() => pill.remove(), 3200);
+  }
+
+  function showGameOver(report) {
+    hideChallenge();
+    const players = Object.entries(report.players).sort((a,b) => b[1].score - a[1].score);
+    const winner = players[0]?.[0];
+    document.getElementById("wait-text").textContent =
+      winner ? `🏆 ${winner} wins with ${players[0][1].score} pts!` : "Game over!";
+    waitEl.style.display = "flex";
+    gridEl.style.display = "none";
+    showToast("Game over! Thanks for watching 🍿");
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
+  }
+</script>
+</body>
+</html>
