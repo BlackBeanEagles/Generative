@@ -1,18 +1,21 @@
+import asyncio
 import json
 import os
 import random
 import re
+import time
 from difflib import get_close_matches
 
 import anthropic
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from game_manager import GameManager, calc_score
 from meme_data import EXPRESSION_COLORS, EXPRESSION_MEME_NAMES
 
 load_dotenv()
@@ -27,10 +30,9 @@ app.add_middleware(
 )
 
 anthropic_client = anthropic.Anthropic()
+game_manager = GameManager()
 
-# Filled at startup from Imgflip's public catalog
-imgflip_catalog: dict[str, dict] = {}  # name.lower() -> {id, name, url, box_count}
-
+imgflip_catalog: dict[str, dict] = {}
 IMGFLIP_USERNAME = os.getenv("IMGFLIP_USERNAME", "")
 IMGFLIP_PASSWORD = os.getenv("IMGFLIP_PASSWORD", "")
 
@@ -38,9 +40,13 @@ EXPRESSION_EMOJIS = {
     "happy": "😄", "surprised": "😮", "sad": "😢",
     "angry": "😠", "disgusted": "🤢", "fearful": "😨", "neutral": "😐",
 }
+STREAK_LABELS = {
+    1: "", 2: " (x2 COMBO!)", 3: " (x3 TRIPLE!)",
+    4: " (x4 ULTRA!!)", 5: " (x5 LEGENDARY!!!)",
+}
 
 
-# ─── Startup: fetch Imgflip template catalog ─────────────────────────────────
+# ─── Startup ─────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def load_imgflip_catalog():
@@ -56,49 +62,35 @@ async def load_imgflip_catalog():
         print(f"[imgflip] catalog load failed: {e}")
 
 
-# ─── Imgflip helpers ─────────────────────────────────────────────────────────
+# ─── Meme helpers ─────────────────────────────────────────────────────────────
 
 def resolve_template(expression: str) -> dict | None:
-    """Return the best Imgflip template for the given expression."""
     candidates = EXPRESSION_MEME_NAMES.get(expression, [])
     for name in candidates:
-        # Exact match first
         key = name.lower()
         if key in imgflip_catalog:
             return imgflip_catalog[key]
-        # Fuzzy match
         matches = get_close_matches(key, imgflip_catalog.keys(), n=1, cutoff=0.6)
         if matches:
             return imgflip_catalog[matches[0]]
-    # Last resort: random from catalog
     return random.choice(list(imgflip_catalog.values())) if imgflip_catalog else None
 
 
 async def generate_imgflip_meme(template: dict, top: str, bottom: str) -> str | None:
-    """Call Imgflip caption_image and return the meme image URL."""
     if not IMGFLIP_USERNAME or not IMGFLIP_PASSWORD:
-        return None  # Credentials not set — return template preview image instead
-
+        return None
     box_count = template.get("box_count", 2)
-
     if box_count <= 2:
         data = {
-            "template_id": template["id"],
-            "username": IMGFLIP_USERNAME,
-            "password": IMGFLIP_PASSWORD,
-            "text0": top.upper(),
-            "text1": bottom.upper(),
+            "template_id": template["id"], "username": IMGFLIP_USERNAME,
+            "password": IMGFLIP_PASSWORD, "text0": top.upper(), "text1": bottom.upper(),
         }
     else:
-        # For multi-box templates, distribute text across first two boxes
         data = {
-            "template_id": template["id"],
-            "username": IMGFLIP_USERNAME,
+            "template_id": template["id"], "username": IMGFLIP_USERNAME,
             "password": IMGFLIP_PASSWORD,
-            "boxes[0][text]": top.upper(),
-            "boxes[1][text]": bottom.upper(),
+            "boxes[0][text]": top.upper(), "boxes[1][text]": bottom.upper(),
         }
-
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.post("https://api.imgflip.com/caption_image", data=data)
@@ -107,11 +99,8 @@ async def generate_imgflip_meme(template: dict, top: str, bottom: str) -> str | 
                 return result["data"]["url"]
     except Exception as e:
         print(f"[imgflip] caption failed: {e}")
-
     return None
 
-
-# ─── JSON extraction ──────────────────────────────────────────────────────────
 
 def extract_json(text: str) -> dict:
     text = text.strip()
@@ -121,17 +110,17 @@ def extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-# ─── Request / Response models ────────────────────────────────────────────────
+# ─── Analyze endpoint ─────────────────────────────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
-    image: str       # base64 JPEG
+    image: str
     context: str = ""
     streak: int = 0
 
 
 class MemePayload(BaseModel):
     name: str
-    image_url: str   # actual Imgflip-generated URL (or template preview)
+    image_url: str
     top: str
     bottom: str
     accent: str
@@ -146,21 +135,14 @@ class AnalyzeResponse(BaseModel):
     streak_label: str
 
 
-STREAK_LABELS = {1: "", 2: " (x2 COMBO!)", 3: " (x3 TRIPLE!)",
-                 4: " (x4 ULTRA!!)", 5: " (x5 LEGENDARY!!!)"}
-
-
-# ─── Main endpoint ─────────────────────────────────────────────────────────────
-
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_expression(req: AnalyzeRequest):
     context_block = f"\nUser situation: {req.context}" if req.context.strip() else ""
     streak_block = (
-        f"\nThey've shown this SAME expression for {req.streak} cycles — go increasingly unhinged."
+        f"\nSame expression repeated {req.streak} times — go increasingly unhinged."
         if req.streak > 1 else ""
     )
 
-    # 1. Ask Claude to classify expression + write captions
     try:
         message = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -168,24 +150,18 @@ async def analyze_expression(req: AnalyzeRequest):
             messages=[{
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": "image/jpeg", "data": req.image},
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            f"Analyze the facial expression. Be funny and internet-savvy."
-                            f"{context_block}{streak_block}\n\n"
-                            "Respond ONLY with raw JSON (no markdown):\n"
-                            '{"expression":"<happy|surprised|sad|angry|disgusted|fearful|neutral>",'
-                            '"intensity":"<mild|moderate|strong>",'
-                            '"top":"<meme top text, ≤6 words>",'
-                            '"bottom":"<meme punchline, ≤6 words>",'
-                            '"roast":"<savage one-liner, ≤10 words>"}\n\n'
-                            "If no face: expression=neutral, intensity=mild."
-                        ),
-                    },
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": req.image}},
+                    {"type": "text", "text": (
+                        f"Analyze the facial expression. Be funny and internet-savvy."
+                        f"{context_block}{streak_block}\n\n"
+                        'Respond ONLY with raw JSON (no markdown):\n'
+                        '{"expression":"<happy|surprised|sad|angry|disgusted|fearful|neutral>",'
+                        '"intensity":"<mild|moderate|strong>",'
+                        '"top":"<meme top text, ≤6 words>",'
+                        '"bottom":"<meme punchline, ≤6 words>",'
+                        '"roast":"<savage one-liner, ≤10 words>"}\n\n'
+                        "If no face: expression=neutral, intensity=mild."
+                    )},
                 ],
             }],
         )
@@ -204,19 +180,13 @@ async def analyze_expression(req: AnalyzeRequest):
     top_text = result.get("top", "WHEN THE AI")
     bottom_text = result.get("bottom", "CANNOT READ YOU")
 
-    # 2. Resolve Imgflip template
     template = resolve_template(expression)
-
-    # 3. Generate captioned meme on Imgflip
-    meme_url = None
+    meme_url = ""
     template_name = "Meme"
 
     if template:
         template_name = template["name"]
-        meme_url = await generate_imgflip_meme(template, top_text, bottom_text)
-        # If caption generation failed but we have credentials, fall back to template preview
-        if not meme_url:
-            meme_url = template.get("url", "")
+        meme_url = await generate_imgflip_meme(template, top_text, bottom_text) or template.get("url", "")
 
     accent = EXPRESSION_COLORS.get(expression, {}).get("accent", "#7c3aed")
     streak_level = min(req.streak, 5)
@@ -225,30 +195,184 @@ async def analyze_expression(req: AnalyzeRequest):
         expression=expression,
         intensity=result.get("intensity", "moderate"),
         emoji=EXPRESSION_EMOJIS[expression],
-        meme=MemePayload(
-            name=template_name,
-            image_url=meme_url or "",
-            top=top_text,
-            bottom=bottom_text,
-            accent=accent,
-        ),
+        meme=MemePayload(name=template_name, image_url=meme_url, top=top_text, bottom=bottom_text, accent=accent),
         roast=result.get("roast", "Interesting face."),
         streak_label=STREAK_LABELS.get(streak_level, STREAK_LABELS[5]),
     )
 
 
+# ─── Room endpoints ───────────────────────────────────────────────────────────
+
+class CreateRoomRequest(BaseModel):
+    host: str
+    duration: int = 60
+
+
+@app.post("/api/rooms")
+async def create_room(req: CreateRoomRequest):
+    game_manager.cleanup_old_rooms()
+    room = game_manager.create_room(host=req.host.strip() or "Player", duration=req.duration)
+    return {"code": room.code, "host": room.host, "duration": room.duration}
+
+
+@app.get("/api/rooms/{code}")
+async def get_room(code: str):
+    room = game_manager.get_room(code)
+    if not room:
+        return {"error": "Room not found"}
+    return {
+        "code": room.code,
+        "host": room.host,
+        "duration": room.duration,
+        "players": list(room.players.keys()),
+        "started": room.started_at is not None,
+        "ended": room.ended,
+    }
+
+
+# ─── WebSocket game endpoint ──────────────────────────────────────────────────
+
+@app.websocket("/ws/{code}/{player_name}")
+async def game_ws(ws: WebSocket, code: str, player_name: str):
+    room = game_manager.get_room(code)
+    if not room:
+        await ws.close(code=4004, reason="Room not found")
+        return
+
+    await ws.accept()
+    name = player_name.strip() or f"Player{len(room.players) + 1}"
+    room.players[name] = type("P", (), {
+        "name": name, "ws": ws, "score": 0, "streak": 0,
+        "last_expression": None, "connected": True, "events": [],
+    })()
+
+    # Import actual PlayerState
+    from game_manager import PlayerState
+    room.players[name] = PlayerState(name=name, ws=ws)
+
+    # Welcome this player
+    await ws.send_text(json.dumps({
+        "type": "welcome",
+        "room": room.code,
+        "host": room.host,
+        "is_host": name == room.host,
+        "players": list(room.players.keys()),
+        "duration": room.duration,
+        "started": room.started_at is not None,
+    }))
+
+    # Notify others
+    await game_manager.broadcast(room, {
+        "type": "player_joined",
+        "name": name,
+        "players": list(room.players.keys()),
+    }, exclude=name)
+
+    async def game_timer():
+        if room.duration == 0:
+            return
+        start = time.time()
+        while True:
+            await asyncio.sleep(1)
+            remaining = room.duration - (time.time() - start)
+            await game_manager.broadcast(room, {
+                "type": "tick",
+                "time_remaining": max(0, round(remaining, 1)),
+            })
+            if remaining <= 0:
+                if not room.ended:
+                    room.ended = True
+                    await game_manager.broadcast(room, {
+                        "type": "game_ended",
+                        "report": room.build_report(),
+                    })
+                break
+
+    timer_task = None
+
+    try:
+        while True:
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
+            mtype = msg.get("type")
+
+            if mtype == "start" and name == room.host and not room.started_at:
+                room.started_at = time.time()
+                await game_manager.broadcast(room, {
+                    "type": "game_started",
+                    "duration": room.duration,
+                })
+                if room.duration > 0:
+                    timer_task = asyncio.create_task(game_timer())
+
+            elif mtype == "score" and room.is_active():
+                p = room.players[name]
+                expression = msg.get("expression", "neutral")
+                intensity = msg.get("intensity", "mild")
+                meme_name = msg.get("meme_name", "")
+                streak = msg.get("streak", 1)
+
+                # Update streak tracking
+                if expression == p.last_expression:
+                    p.streak = min(p.streak + 1, 15)
+                else:
+                    p.streak = 1
+                    p.last_expression = expression
+
+                score_delta = calc_score(intensity, p.streak)
+                p.score += score_delta
+
+                p.events.append({
+                    "t": round(time.time() - room.started_at, 1),
+                    "expression": expression,
+                    "intensity": intensity,
+                    "score_delta": score_delta,
+                    "meme_name": meme_name,
+                    "streak": p.streak,
+                })
+
+                await game_manager.broadcast(room, {
+                    "type": "score_update",
+                    "players": room.scoreboard(),
+                    "triggerer": name,
+                    "delta": score_delta,
+                })
+
+            elif mtype == "end_game" and name == room.host and not room.ended:
+                room.ended = True
+                if timer_task:
+                    timer_task.cancel()
+                await game_manager.broadcast(room, {
+                    "type": "game_ended",
+                    "report": room.build_report(),
+                })
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[ws] error for {name}: {e}")
+    finally:
+        if name in room.players:
+            room.players[name].connected = False
+        await game_manager.broadcast(room, {
+            "type": "player_left",
+            "name": name,
+            "players": [n for n, p in room.players.items() if p.connected],
+        }, exclude=name)
+
+
+# ─── Health + static ──────────────────────────────────────────────────────────
+
 @app.get("/api/health")
 async def health():
-    creds_ok = bool(IMGFLIP_USERNAME and IMGFLIP_PASSWORD)
     return {
         "status": "ok",
         "model": "claude-haiku-4-5-20251001",
         "imgflip_templates": len(imgflip_catalog),
-        "imgflip_credentials": creds_ok,
+        "imgflip_credentials": bool(IMGFLIP_USERNAME and IMGFLIP_PASSWORD),
+        "active_rooms": len(game_manager.rooms),
     }
 
-
-# ─── Serve frontend ───────────────────────────────────────────────────────────
 
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.isdir(frontend_dir):

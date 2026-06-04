@@ -3,27 +3,124 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MemeExpression — Real-Time AI Meme Generator</title>
+  <title>MemeExpression — Real-Time AI Meme Battle</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
 
-  <!-- ─── Header ─── -->
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SCREEN 1 — LOBBY
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="screen-lobby" class="screen active">
+  <div class="lobby-wrap">
+    <div class="lobby-logo">
+      <span class="logo-big">🎭</span>
+      <h1>MemeExpression</h1>
+      <p class="logo-sub">Real-time AI · Meme Battles · Expression Analytics</p>
+    </div>
+
+    <div class="lobby-card">
+      <!-- Name input -->
+      <label class="field-label">Your Name</label>
+      <input id="player-name" type="text" class="text-input" placeholder="Enter your name…" maxlength="24" value="Player" />
+
+      <!-- Mode selection -->
+      <label class="field-label" style="margin-top:18px">Game Mode</label>
+      <div class="mode-grid">
+        <button class="mode-card active" id="mode-solo-btn" data-mode="solo">
+          <span class="mode-icon">🧑</span>
+          <span class="mode-name">Solo</span>
+          <span class="mode-desc">Practice · see your own stats</span>
+        </button>
+        <button class="mode-card" id="mode-battle-btn" data-mode="battle">
+          <span class="mode-icon">⚔️</span>
+          <span class="mode-name">Battle</span>
+          <span class="mode-desc">Compete online or locally</span>
+        </button>
+      </div>
+
+      <!-- Duration -->
+      <label class="field-label" style="margin-top:18px">Session Duration</label>
+      <div class="dur-row" id="dur-row">
+        <button class="dur-btn" data-dur="30">30s</button>
+        <button class="dur-btn active" data-dur="60">1 min</button>
+        <button class="dur-btn" data-dur="120">2 min</button>
+        <button class="dur-btn" data-dur="0">∞</button>
+      </div>
+
+      <!-- Solo start -->
+      <div id="solo-start" class="lobby-action">
+        <button id="start-solo-btn" class="btn btn-primary btn-lg">▶ Start Solo</button>
+      </div>
+
+      <!-- Battle options -->
+      <div id="battle-options" class="lobby-action" style="display:none">
+        <div class="battle-row">
+          <button id="create-room-btn" class="btn btn-primary">Create Room</button>
+          <span class="or-divider">or</span>
+          <div class="join-row">
+            <input id="join-code-input" type="text" class="text-input code-input"
+              placeholder="ABCD" maxlength="4" />
+            <button id="join-room-btn" class="btn btn-secondary">Join</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Room lobby (shown after create/join) -->
+      <div id="room-lobby" class="room-lobby" style="display:none">
+        <div class="room-code-display">
+          Room Code: <strong id="room-code-big">----</strong>
+          <button class="copy-btn" id="copy-code-btn" title="Copy code">📋</button>
+        </div>
+        <p class="room-hint">Share this code with your opponent — they open this page and join</p>
+        <div id="player-list-lobby" class="player-list-lobby"></div>
+        <button id="start-battle-btn" class="btn btn-primary btn-lg" style="margin-top:14px">
+          ⚔️ Start Battle!
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SCREEN 2 — GAME
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen" style="display:none">
+
+  <!-- Header -->
   <header>
     <div class="logo">
       <span class="logo-icon">🎭</span>
       <span>MemeExpression</span>
-      <span class="badge">LIVE AI</span>
+      <span class="badge" id="mode-badge">SOLO</span>
+    </div>
+    <div class="header-center">
+      <div id="timer-ring" class="timer-ring">
+        <svg viewBox="0 0 56 56" class="timer-svg">
+          <circle class="timer-bg" cx="28" cy="28" r="24"/>
+          <circle id="timer-arc" class="timer-arc" cx="28" cy="28" r="24"/>
+        </svg>
+        <span id="timer-text" class="timer-text">--</span>
+      </div>
     </div>
     <div class="header-right">
+      <div class="volume-wrap">
+        <span class="vol-icon" id="audio-icon">🔇</span>
+        <input type="range" id="volume-slider" min="0" max="100" value="70" class="vol-slider" />
+        <span class="vol-label" id="audio-intensity-label">Idle</span>
+      </div>
       <span id="status-dot" class="status-dot"></span>
-      <span style="font-size:0.75rem;color:var(--text-dim)">Claude + Imgflip</span>
     </div>
   </header>
 
-  <!-- ─── Expression Status Bar ─── -->
+  <!-- Scorecard (hidden in solo) -->
+  <div id="scorecard" class="scorecard" style="display:none"></div>
+
+  <!-- Expression bar -->
   <div id="expression-bar">
     <div class="expression-indicator">
       <span id="expression-emoji" class="expression-emoji">😐</span>
@@ -31,92 +128,120 @@
     </div>
     <div class="intensity-bar-wrap">
       <div class="intensity-bar-track">
-        <div id="intensity-fill" class="intensity-bar-fill" style="width:0%"></div>
+        <div id="intensity-fill" class="intensity-bar-fill"></div>
       </div>
     </div>
     <span id="streak-badge" class="streak-badge"></span>
+    <span id="score-delta-flash" class="score-delta-flash"></span>
     <span id="latency-tag" class="latency-tag">—ms</span>
   </div>
 
-  <!-- ─── Main Split View ─── -->
+  <!-- Main grid: camera | meme -->
   <div class="main-grid">
-
-    <!-- Camera Side -->
     <div class="camera-panel">
       <video id="video" autoplay playsinline style="display:none"></video>
       <canvas id="canvas-hidden"></canvas>
-
       <div class="camera-overlay">
         <div class="scan-ring"></div>
         <span class="scan-label">Scanning…</span>
       </div>
-
       <div id="camera-placeholder" class="camera-placeholder">
         <span class="icon">📷</span>
-        <span style="font-size:0.9rem">Click <strong>Start Camera</strong> to begin</span>
-        <span style="font-size:0.75rem;color:var(--text-dim)">Frames are analyzed then discarded — nothing is stored</span>
+        <span>Allow camera access to start</span>
       </div>
     </div>
 
-    <!-- Meme Side -->
     <div class="meme-panel" id="meme-panel">
       <div id="meme-card">
-        <!-- Placeholder state -->
         <div id="meme-placeholder" class="meme-placeholder">
           <span style="font-size:3rem">🎭</span>
           <span style="color:var(--text-dim);font-size:0.9rem">Make a face to get your meme</span>
         </div>
-
-        <!-- Actual meme image (hidden until first result) -->
         <div id="meme-img-wrap" class="meme-img-wrap" style="display:none">
           <div id="analyzing-spinner" class="analyzing-spinner"></div>
-          <img id="meme-img" src="" alt="Generated meme" />
-          <div class="meme-caption-overlay">
-            <p id="meme-top" class="meme-text meme-text-top"></p>
-            <p id="meme-bottom" class="meme-text meme-text-bottom"></p>
-          </div>
+          <img id="meme-img" src="" alt="meme" />
         </div>
       </div>
-
       <div class="meme-meta">
         <span id="meme-name-tag" class="meme-name-tag"></span>
         <div class="roast-box">
           <span class="roast-label">AI Roast</span>
-          <span id="roast-text">Start the camera and make a face…</span>
+          <span id="roast-text">Start camera and pull a face…</span>
         </div>
       </div>
     </div>
-
   </div>
 
-  <!-- ─── Context Bar ─── -->
+  <!-- Expression graph -->
+  <div class="graph-strip">
+    <div class="graph-header">
+      <span class="graph-title">📈 Expression Timeline</span>
+    </div>
+    <div class="graph-body">
+      <canvas id="expression-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Context bar -->
   <div class="context-bar">
     <span class="context-label">Context</span>
-    <input
-      id="context-input"
-      type="text"
-      placeholder="e.g. 'at work', 'gaming', 'first date', 'watching horror movie'…"
-      maxlength="80"
-    />
-    <span style="font-size:0.72rem;color:var(--text-dim)">Claude tailors captions to your situation</span>
+    <input id="context-input" type="text"
+      placeholder="e.g. 'at work', 'gaming', 'watching horror'…" maxlength="80" />
+    <div class="btn-group">
+      <button id="start-btn" class="btn btn-primary">▶ Camera</button>
+      <button id="stop-btn" class="btn btn-danger" disabled>■ Stop</button>
+      <button id="end-game-btn" class="btn btn-secondary">⏹ End Game</button>
+      <button id="share-btn" class="btn btn-secondary" disabled>📸 Save</button>
+    </div>
   </div>
 
-  <!-- ─── Bottom Bar ─── -->
+  <!-- History bar -->
   <div class="bottom-bar">
     <span class="history-label">History</span>
     <div id="history-strip">
       <span style="font-size:0.75rem;color:var(--text-dim);align-self:center">No memes yet…</span>
     </div>
-    <div class="btn-group">
-      <button id="start-btn" class="btn btn-primary">▶ Start Camera</button>
-      <button id="stop-btn" class="btn btn-danger" disabled>■ Stop</button>
-      <button id="share-btn" class="btn btn-secondary" disabled>📸 Save Meme</button>
-    </div>
   </div>
 
-  <!-- ─── Toast ─── -->
-  <div id="toast" class="toast"></div>
+</div>
 
-  <script src="/static/app.js"></script>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     SCREEN 3 — REPORT
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="screen-report" class="screen" style="display:none">
+  <div class="report-wrap">
+    <div class="report-header">
+      <h1 class="report-title" id="report-title">Session Complete!</h1>
+      <p class="report-subtitle" id="report-subtitle"></p>
+    </div>
+
+    <div id="report-scorecards" class="report-scorecards"></div>
+
+    <div class="report-graph-wrap">
+      <p class="section-label">Expression Timeline</p>
+      <div class="report-graph-body">
+        <canvas id="report-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="report-actions">
+      <button id="download-report-btn" class="btn btn-primary btn-lg">📥 Download Report</button>
+      <button id="share-report-btn" class="btn btn-secondary btn-lg">🔗 Share</button>
+      <button id="play-again-btn" class="btn btn-secondary btn-lg">🔄 Play Again</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Scripts — order matters: audio → game → graph → report → app -->
+<script src="/static/audio.js"></script>
+<script src="/static/game.js"></script>
+<script src="/static/graph.js"></script>
+<script src="/static/report.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
